@@ -1,0 +1,15 @@
+{
+  "name": "llm-output-gate",
+  "version": "1.0.0",
+  "description": "Deterministic LLM output handling gate (OWASP LLM05) - POST /sanitize-output",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
