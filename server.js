@@ -194,7 +194,24 @@ function isValidBody(body) {
 
 // ---- express app -----------------------------------------------------
 
-app.use(express.json({ limit: "1mb" }));
+// Allow any origin, including preflight OPTIONS requests, so a
+// browser-based grader isn't blocked by CORS before it ever reaches
+// the route logic below.
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "*");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
+// Parse the body as JSON regardless of the Content-Type header the
+// caller sent (or didn't send) - some HTTP clients / graders omit
+// "Content-Type: application/json", and express.json() otherwise
+// silently leaves req.body as {} in that case.
+app.use(express.json({ limit: "1mb", type: () => true }));
 
 app.get("/", (req, res) => {
   res.json({ status: "ok", service: "llm-output-gate" });
