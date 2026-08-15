@@ -211,42 +211,64 @@ app.use((req, res, next) => {
 // caller sent (or didn't send) - some HTTP clients / graders omit
 // "Content-Type: application/json", and express.json() otherwise
 // silently leaves req.body as {} in that case.
-app.use(express.json({ limit: "1mb", type: () => true }));
+// Limit is generous so an oversized/junk body doesn't itself trigger a
+// raw PayloadTooLargeError (HTML page) before our own INVALID_SCHEMA
+// (20000-char output) check ever gets a chance to run.
+app.use(express.json({ limit: "10mb", type: () => true }));
 
 app.get("/", (req, res) => {
   res.json({ status: "ok", service: "llm-output-gate" });
 });
 
-app.post("/sanitize-output", (req, res) => {
-  const body = req.body;
+function handleSanitize(req, res) {
+  try {
+    const body = req.body;
 
-  if (!isValidBody(body)) {
+    if (!isValidBody(body)) {
+      return res.json({ safe: false, reason: "INVALID_SCHEMA" });
+    }
+
+    const { channel, output } = body;
+
+    const decoded = decodeOnce(output);
+    if (decoded !== output) {
+      const decodedVerdict = checkChannel(channel, decoded);
+      if (decodedVerdict !== "SAFE") {
+        return res.json({ safe: false, reason: "ENCODED_PAYLOAD" });
+      }
+    }
+
+    const verdict = checkChannel(channel, output);
+    return res.json({ safe: verdict === "SAFE", reason: verdict });
+  } catch (e) {
+    // Any unexpected failure in parsing/checking still gets a
+    // well-formed JSON response rather than an HTML 500 page.
+    console.error("sanitize-output error:", e);
     return res.json({ safe: false, reason: "INVALID_SCHEMA" });
   }
+}
 
-  const { channel, output } = body;
+app.post("/sanitize-output", handleSanitize);
 
-  const decoded = decodeOnce(output);
-  if (decoded !== output) {
-    const decodedVerdict = checkChannel(channel, decoded);
-    if (decodedVerdict !== "SAFE") {
-      return res.json({ safe: false, reason: "ENCODED_PAYLOAD" });
-    }
-  }
-
-  const verdict = checkChannel(channel, output);
-  return res.json({ safe: verdict === "SAFE", reason: verdict });
+// Any other HTTP method on this route -> INVALID_SCHEMA JSON instead
+// of Express's default "Cannot GET/PUT/..." HTML 404 page.
+app.all("/sanitize-output", (req, res) => {
+  res.json({ safe: false, reason: "INVALID_SCHEMA" });
 });
 
-// Malformed JSON body -> INVALID_SCHEMA, not a 500
+// Any other unknown path -> JSON 404 instead of an HTML page.
+app.use((req, res) => {
+  res.status(404).json({ safe: false, reason: "INVALID_SCHEMA" });
+});
+
+// Catch-all error handler: no matter the cause (malformed JSON body,
+// oversized body, an unexpected thrown error anywhere in the chain),
+// always answer with well-formed JSON, never Express's default HTML
+// error page.
 app.use((err, req, res, next) => {
-  if (
-    err &&
-    (err.type === "entity.parse.failed" || err instanceof SyntaxError)
-  ) {
-    return res.json({ safe: false, reason: "INVALID_SCHEMA" });
-  }
-  return next(err);
+  console.error("unhandled error:", err && err.message);
+  if (res.headersSent) return next(err);
+  return res.status(200).json({ safe: false, reason: "INVALID_SCHEMA" });
 });
 
 const PORT = process.env.PORT || 3000;
