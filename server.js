@@ -3,7 +3,7 @@ const express = require("express");
 const app = express();
 
 // ---- config ---------------------------------------------------------
-const ALLOWED_HOSTS = ["cdn-b4irssg.example", "app-9u94o3p.example"];
+const ALLOWED_HOSTS = ["example.com", "trusted-cdn.com"];
 const VALID_CHANNELS = ["html", "markdown", "url", "sql", "shell"];
 const MAX_OUTPUT_LEN = 20000;
 
@@ -194,8 +194,8 @@ function isValidBody(body) {
 
 // ---- express app -----------------------------------------------------
 
-// Allow any origin, including preflight OPTIONS requests, so a
-// browser-based grader isn't blocked by CORS before it ever reaches
+// Allow any origin, including preflight OPTIONS requests, so
+// cross-origin clients aren't blocked by CORS before they ever reach
 // the route logic below.
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
@@ -208,7 +208,7 @@ app.use((req, res, next) => {
 });
 
 // Parse the body as JSON regardless of the Content-Type header the
-// caller sent (or didn't send) - some HTTP clients / graders omit
+// caller sent (or didn't send) - some HTTP clients omit
 // "Content-Type: application/json", and express.json() otherwise
 // silently leaves req.body as {} in that case.
 // Limit is generous so an oversized/junk body doesn't itself trigger a
